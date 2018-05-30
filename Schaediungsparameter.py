@@ -21,6 +21,7 @@ from abaqusConstants import *
 #from Numeric import array
 import math
 import abaqus
+import odbAccess
 import time
 import numpy as np
 import warnings
@@ -43,7 +44,7 @@ def toc():
 #|   block of functions   |
 #+------------------------+
 
-def openODB(name_ODB,odbPathName): 
+def OPENodb(name_ODB,odbPathName): 
     'Opens ODB-File as readable'
     odb =   session.openOdb(name=name_ODB, path=odbPathName, readOnly=False)     
     return odb
@@ -54,6 +55,16 @@ def getFrames(step_name,odb):
     'return Frames from a Step'
     frames = odb.steps[step_name].frames
     return frames
+#+------------------------+
+
+def getSteps(odb):
+    'return Frames from a Step'
+    steps = odb.steps
+    return steps
+
+#+------------------------+
+ 
+
 
 #+------------------------+
  
@@ -105,13 +116,21 @@ def VectorToTensor(Vec,flag):
     
 #+------------------------+
  
-    
-
+def getValueHistory(odb,flag,eID):
+    'INPUt: odb,flag,eID'
+    'Returns the time course of LE or S (flag) of the Elemente with the eID'
+    histoValue = []
+    frames = getFrames('Step-1',odb)
+    histoValue=map(lambda temp:getValueONelement(temp,flag,eID),frames)
+    return histoValue     
 #+------------------------+
 
 
  
 #+------------------------+
-
-
- 
+#Run DEBUG Mode
+odb=OPENodb('TEST','Shear_OneElement.odb')
+frames = getFrames('Step-1',odb)
+histoValue = getValueHistory(odb,'LE',0)
+print('LE-Wert von Element:1')
+print(histoValue)
