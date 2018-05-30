@@ -123,14 +123,47 @@ def getValueHistory(odb,flag,eID):
     frames = getFrames('Step-1',odb)
     histoValue=map(lambda temp:getValueONelement(temp,flag,eID),frames)
     return histoValue     
+
 #+------------------------+
 
-
+def getMaxEigVal(TENSOR):
+    'Calculat the Eigevalues of a Tensor'
+    EigVal=np.linalg.eigvals(TENSOR)
+    maxValue=EigVal.max()
+    return maxValue
  
 #+------------------------+
+    
+def exportVariable(Var,fileName='EXPORT.txt'):
+    'export a variable in a txt-file'
+    obj = open(fileName,'w')
+    for var in Var:
+        obj.write('%6.5f\n' % var)
+
+#+------------------------+
+
+
+#+------------------------+
+
+
+#+------------------------+
+
+
+#+------------------------+
+
+
+#+------------------------+
+
+
+
+
+
+
 #Run DEBUG Mode
 odb=OPENodb('TEST','Shear_OneElement.odb')
 frames = getFrames('Step-1',odb)
 histoValue = getValueHistory(odb,'LE',0)
 print('LE-Wert von Element:1')
 print(histoValue)
+
+HistMaxEigVal = map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,'LE'),histoValue))
