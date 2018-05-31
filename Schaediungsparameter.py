@@ -7,10 +7,22 @@ This is a temporary script file.
 #+-------------------------------+
 #|   block of user's constants   |
 #+-------------------------------+
-odbPathName = 'C:\Users\ThomasHeidebrecht\Documents\Abaqus\Benchmark_Coarse.odb'
-oldStepName = 'Step-1'
-#
+#odbPathName = 'C:\Users\ThomasHeidebrecht\Documents\Abaqus\Benchmark_Coarse.odb'
+#oldStepName = 'Step-1'
 
+
+#+-------------------------------+
+#|   TO-DO:   |
+#+-------------------------------+
+# 1. Function witch creat Set of 
+#   Elements by pretending Set-Name. If no set is defined: default= all Elements)
+#2. GUI
+#
+#
+#
+#
+#
+#
 #+----------------------+
 #|   block of modules   |
 #+----------------------+
@@ -18,10 +30,9 @@ oldStepName = 'Step-1'
 
 import visualization
 from abaqusConstants import *
-#from Numeric import array
 import math
 import abaqus
-import odbAccess
+from odbAccess import *
 import time
 import numpy as np
 import warnings
@@ -46,7 +57,7 @@ def toc():
 
 def OPENodb(name_ODB,odbPathName): 
     'Opens ODB-File as readable'
-    odb =   session.openOdb(name=name_ODB, path=odbPathName, readOnly=False)     
+    odb =session.openOdb(name=name_ODB, path=odbPathName, readOnly=False)     
     return odb
 
 #+------------------------+
@@ -64,7 +75,9 @@ def getSteps(odb):
 
 #+------------------------+
  
-
+def getElementID(Elements): 
+    
+    return elList
 
 #+------------------------+
  
@@ -133,6 +146,45 @@ def getMaxEigVal(TENSOR):
     return maxValue
  
 #+------------------------+
+  
+def getMinEigVal(TENSOR):
+    'Calculat the Eigevalues of a Tensor'
+    EigVal=np.linalg.eigvals(TENSOR)
+    minValue=EigVal.min()
+    return minValue    
+
+#+------------------------+
+    
+def calculateSWT(E,S_max,E_min,E_max):
+    'Calculate the Smith-Wattson-Tropper-Parameter'
+    'Input:E,S_max,E_min,E_max'
+    SWF=np.sqrt((E_max-E_min)/2*S_max*E)
+    return SWF
+
+#+------------------------+
+
+def calculateFS(E,k,S_max,S_yield,E_min,E_max):
+    'Calculate the Fatemi-Socie-Paratmeter'
+    'Input E,k,S_max,S_yield,E_min,E_max'
+    FS = 0.5*(Emax - Emin)*(1 + k*Smax/Syield) 
+    return FS
+
+#+------------------------+
+
+def creatScalarNewFieldOutput(frame,Name,Field):
+    'Genarete a new Fieldoutput for element'
+    FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
+    
+
+#+------------------------+
+def genaretFieldofParameter(odb,elements,func):
+    'generats the fieldOutput for the  with the pretended Function'
+    'Input:frames,elements,func'
+    frames = getFrames('Step-1',odb)
+    
+    histoValue = getValueHistory(odb,'E',0)
+    histoValue = getValueHistory(odb,'LE',0)
+#+------------------------+
     
 def exportVariable(Var,fileName='EXPORT.txt'):
     'export a variable in a txt-file'
@@ -143,27 +195,14 @@ def exportVariable(Var,fileName='EXPORT.txt'):
 #+------------------------+
 
 
-#+------------------------+
-
-
-#+------------------------+
-
-
-#+------------------------+
-
-
-#+------------------------+
-
-
-
-
 
 
 #Run DEBUG Mode
 odb=OPENodb('TEST','Shear_OneElement.odb')
 frames = getFrames('Step-1',odb)
-histoValue = getValueHistory(odb,'LE',0)
+histoValue = getValueHistory(odb,'S',0)
 print('LE-Wert von Element:1')
 print(histoValue)
 
-HistMaxEigVal = map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,'LE'),histoValue))
+HistMaxEigVal = map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,'S'),histoValue))
+exportVariable(HistMaxEigVal,fileName='EXPORT.txt')
