@@ -167,11 +167,23 @@ def calculateSWT(E,S_max,E_min,E_max):
 
 #+------------------------+
 
-def calculateFS(E,k,S_max,S_yield,E_min,E_max):
+def calculateFS(E,k,S_yield,S_max,E_min,E_max):
     'Calculate the Fatemi-Socie-Paratmeter'
     'Input E,k,S_max,S_yield,E_min,E_max'
     FS = 0.5*(E_max - E_min)*(1 + k*S_max/S_yield) 
     return FS
+
+#+-------------------------+
+    
+def getTimeMin(histoValue,flag):
+    Min = np.min(map(getMinEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
+    return Min
+
+#+------------------------+
+
+def getTimeMinMax(histoValue,flag):
+    Max = np.max(map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
+    return Max
 
 #+-------------------------+
 def getTimeMinMax(histoValue,flag):
@@ -179,15 +191,16 @@ def getTimeMinMax(histoValue,flag):
     Min = np.min(map(getMinEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
     return Min,Max
 #+------------------------+
-
-def calcuParameter(eIDs,histoLE,histoS,Para):
+def calcuParameter(histoLE,histoS,Para):
     'Calculate the Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter'
     'Returns the field for Countor plotting' 
     'Input Dir with the Parameter for Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter (E,K,S_yield)'
-#    minLE,maxLE = 
-#    minS,maxS = 
-    FS = map(lambda temp:calculateSWT(Para,temp[2],temp[1],temp[0]),[minLE,maxLE,maxS])
-
+    minLE = map(lambda temp: getTimeMin(temp,'LE'),histoLE)
+    maxLE = map(lambda temp: getTimeMinMax(temp,'LE'),histoLE)
+    maxS = map(lambda temp: getTimeMinMax(temp,'S'),histoS)
+    SWT = map(lambda temp:calculateSWT(Para['E'],temp[2],temp[1],temp[0]),[minLE,maxLE,maxS])
+    FS = map(lambda temp:calculateSWT(Para['E'],Para['k'],Para['S_yield'],temp[2],temp[1],temp[0]),minLE,maxLE,maxS)
+    return SWT,FS
 #+------------------------+
 
     
@@ -222,12 +235,13 @@ def exportVariable(Var,fileName='EXPORT.txt'):
 
 
 #Run DEBUG Mode
-odb=OPENodb('TEST','Shear_OneElement.odb')
+#odb=OPENodb('TEST','Shear_OneElement.odb')
+odb=OPENodb('TEST','Benchmark_Coarse.odb')
 frames = getFrames('Step-1',odb)
-eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['ONEELEMENT-1'].name)
-
+eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'].name)
 Para = {'E':200000,'k':0.5,'S_yield':1200}
 
+calcuParameter(histoLE,histoS,Para)
 
 
 
