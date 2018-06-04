@@ -75,9 +75,13 @@ def getSteps(odb):
 
 #+------------------------+
  
-def getElementID(Elements): 
-    
-    return elList
+def getEIDS(instance,SetName = None): 
+    if SetName == None:
+        elements = instance.elements
+    else:
+        elements = instance.elementSets[SetName]
+    eIDS=map(lambda element:element.label,elements)
+    return eIDS
 
 #+------------------------+
  
@@ -166,24 +170,44 @@ def calculateSWT(E,S_max,E_min,E_max):
 def calculateFS(E,k,S_max,S_yield,E_min,E_max):
     'Calculate the Fatemi-Socie-Paratmeter'
     'Input E,k,S_max,S_yield,E_min,E_max'
-    FS = 0.5*(Emax - Emin)*(1 + k*Smax/Syield) 
+    FS = 0.5*(E_max - E_min)*(1 + k*S_max/S_yield) 
     return FS
+
+#+-------------------------+
+def getTimeMinMax(histoValue,flag):
+    Max = np.max(map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
+    Min = np.min(map(getMinEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
+    return Min,Max
+#+------------------------+
+
+def calcuParameter(eIDs,histoLE,histoS,Para):
+    'Calculate the Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter'
+    'Returns the field for Countor plotting' 
+    'Input Dir with the Parameter for Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter (E,K,S_yield)'
+#    minLE,maxLE = 
+#    minS,maxS = 
+    FS = map(lambda temp:calculateSWT(Para,temp[2],temp[1],temp[0]),[minLE,maxLE,maxS])
 
 #+------------------------+
 
-def creatScalarNewFieldOutput(frame,Name,Field):
+    
+def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
+    'generats the fieldOutput for the  with the pretended Function'
+    'Input:frames,elements,func'
+    'Return:eIDS,histS,histoLE'
+    frames = getFrames('Step-1',odb)
+    instance = odb.rootAssembly.instances[instance_name]
+    eIDs=getEIDS(instance,El_SetName)
+    histoS = map(lambda temp: getValueHistory(odb,'S',temp),range(len(eIDs)))
+    histoLE = map(lambda temp: getValueHistory(odb,'LE',temp),range(len(eIDs)))
+    return eIDs,histoS,histoLE
+
+#+------------------------+
+     
+def ScalarNewFieldOutput(frame,Name,Field):
     'Genarete a new Fieldoutput for element'
     FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
     
-
-#+------------------------+
-def genaretFieldofParameter(odb,elements,func):
-    'generats the fieldOutput for the  with the pretended Function'
-    'Input:frames,elements,func'
-    frames = getFrames('Step-1',odb)
-    
-    histoValue = getValueHistory(odb,'E',0)
-    histoValue = getValueHistory(odb,'LE',0)
 #+------------------------+
     
 def exportVariable(Var,fileName='EXPORT.txt'):
@@ -200,9 +224,18 @@ def exportVariable(Var,fileName='EXPORT.txt'):
 #Run DEBUG Mode
 odb=OPENodb('TEST','Shear_OneElement.odb')
 frames = getFrames('Step-1',odb)
-histoValue = getValueHistory(odb,'S',0)
-print('LE-Wert von Element:1')
-print(histoValue)
+eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['ONEELEMENT-1'].name)
 
-HistMaxEigVal = map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,'S'),histoValue))
-exportVariable(HistMaxEigVal,fileName='EXPORT.txt')
+Para = {'E':200000,'k':0.5,'S_yield':1200}
+
+
+
+
+
+#histoValue = getValueHistory(odb,'S',0)
+#print('LE-Wert von Element:1')
+#print(histoValue)
+
+
+#HistMaxEigVal = map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,'S'),histoValue))
+#exportVariable(HistMaxEigVal,fileName='EXPORT.txt')
