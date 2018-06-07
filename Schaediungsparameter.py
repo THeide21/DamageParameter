@@ -203,8 +203,8 @@ def calcuParameter(histoLE,histoS,Para):
     SWT =[]
     FS = []
     for i in range(len(minLE)):
-        SWT.append(calculateSWT(Para['E'],maxS[i],minLE[i],maxLE[i]))
-        FS.append(calculateFS(Para['E'],Para['k'],Para['S_yield'],maxS[i],minLE[i],maxLE[i]))
+        SWT.append((calculateSWT(Para['E'],maxS[i],minLE[i],maxLE[i]),))
+        FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],maxS[i],minLE[i],maxLE[i]),))
     return FS,SWT
 #+------------------------+
 
@@ -222,9 +222,18 @@ def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
 
 #+------------------------+
      
-def ScalarNewFieldOutput(instance,frame,Name,eIDs,Field):
+def ScalarNewFieldOutput(odb,instance,frame,Name,eIDs,Field):
     'Genarete a new Fieldoutput for element'
-    FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
+    'Attention: OBD will be saved and closed. It has to be opend again'
+    'Input:odb,instance,frame,Name and eIDs and Field as tuple'
+    try:
+        FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
+        FieldOut.addData(position=INTEGRATION_POINT,instance=instance,labels=eIDS,data=Field)
+    except:
+        print('Variable %s already exist' % Name)
+    odb.save()
+    odb.close()
+    
     
 #+------------------------+
     
@@ -233,7 +242,6 @@ def exportVariable(Var,fileName='EXPORT.txt'):
     obj = open(fileName,'w')
     for var in Var:
         obj.write('%6.5f\n' % var)
-
 #+------------------------+
 
 
@@ -245,11 +253,15 @@ odb=OPENodb('TEST','Benchmark_Coarse.odb')
 frames = getFrames('Step-1',odb)
 eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'].name)
 Para = {'E':200000,'k':0.5,'S_yield':1200}
-
 FS,SWT = calcuParameter(histoLE,histoS,Para)
-print(FS)
-print(SWT)
 
+
+
+ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+odb=OPENodb('TEST','Benchmark_Coarse.odb')
+
+ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+odb=OPENodb('TEST','Benchmark_Coarse.odb')
 
 #histoValue = getValueHistory(odb,'S',0)
 #print('LE-Wert von Element:1')
