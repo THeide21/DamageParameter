@@ -162,7 +162,9 @@ def getMinEigVal(TENSOR):
 def calculateSWT(E,S_max,E_min,E_max):
     'Calculate the Smith-Wattson-Tropper-Parameter'
     'Input:E,S_max,E_min,E_max'
-    SWF=np.sqrt((E_max-E_min)/2*S_max*E)
+    temp = (E_max-E_min)/(2*S_max*E)
+    if temp > 0:
+        SWF=np.sqrt(temp)
     return SWF
 
 #+------------------------+
@@ -181,7 +183,7 @@ def getTimeMin(histoValue,flag):
 
 #+------------------------+
 
-def getTimeMinMax(histoValue,flag):
+def getTimenMax(histoValue,flag):
     Max = np.max(map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
     return Max
 
@@ -196,11 +198,14 @@ def calcuParameter(histoLE,histoS,Para):
     'Returns the field for Countor plotting' 
     'Input Dir with the Parameter for Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter (E,K,S_yield)'
     minLE = map(lambda temp: getTimeMin(temp,'LE'),histoLE)
-    maxLE = map(lambda temp: getTimeMinMax(temp,'LE'),histoLE)
-    maxS = map(lambda temp: getTimeMinMax(temp,'S'),histoS)
-    SWT = map(lambda temp:calculateSWT(Para['E'],temp[2],temp[1],temp[0]),[minLE,maxLE,maxS])
-    FS = map(lambda temp:calculateSWT(Para['E'],Para['k'],Para['S_yield'],temp[2],temp[1],temp[0]),minLE,maxLE,maxS)
-    return SWT,FS
+    maxLE = map(lambda temp: getTimenMax(temp,'LE'),histoLE)
+    maxS = map(lambda temp: getTimenMax(temp,'S'),histoS)
+    SWT =[]
+    FS = []
+    for i in range(len(minLE)):
+        SWT.append(calculateSWT(Para['E'],maxS[i],minLE[i],maxLE[i]))
+        FS.append(calculateFS(Para['E'],Para['k'],Para['S_yield'],maxS[i],minLE[i],maxLE[i]))
+    return FS,SWT
 #+------------------------+
 
     
@@ -217,7 +222,7 @@ def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
 
 #+------------------------+
      
-def ScalarNewFieldOutput(frame,Name,Field):
+def ScalarNewFieldOutput(instance,frame,Name,eIDs,Field):
     'Genarete a new Fieldoutput for element'
     FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
     
@@ -241,9 +246,9 @@ frames = getFrames('Step-1',odb)
 eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'].name)
 Para = {'E':200000,'k':0.5,'S_yield':1200}
 
-calcuParameter(histoLE,histoS,Para)
-
-
+FS,SWT = calcuParameter(histoLE,histoS,Para)
+print(FS)
+print(SWT)
 
 
 #histoValue = getValueHistory(odb,'S',0)
