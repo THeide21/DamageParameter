@@ -34,7 +34,9 @@ import time
 import numpy as np
 import warnings
 import math
-from textRepr import * 
+import itertools as it
+
+
 def tic():
     # Homemade version of matlab tic and toc functions
     global startTime_for_tictoc
@@ -160,13 +162,14 @@ def eulerAnglesToRotationMatrix(theta) :
 
 #+------------------------+
 
-def getRotatioField(T_max,n):
+def getRotatioField(T_min,T_max,n):
     'Return all Ratationsmatrx for all angel(radian)'
     'input: Intial Angel: T_0, Maximal Angel T_max, Delta T'
         #print('New Theta Field will genarated an exported')
-    T = np.linspace(0,T_max,n)
+    T = np.linspace(T_min,T_max,n)
         # For numpy Version '1.13.3'
-    theta = np.array(np.meshgrid(T, T, T)).T.reshape(-1,3) # Matrix, which contains all combines of theta from 0,2*Pi
+    #theta = np.array(np.meshgrid(T, T, T)).T.reshape(-1,3) # Matrix, which contains all combines of theta from 0,2*Pi
+    theta = list(it.combinations_with_replacement(T,3))
     R = map(eulerAnglesToRotationMatrix,theta)
     return R
 
@@ -183,7 +186,8 @@ def getValueHistory(odb,flag,eID):
     'Returns the time course of LE or S (flag) of the Elemente with the eID'
     histoValue = []
     frames = getFrames('Step-1',odb)
-    histoValue=map(lambda temp:getValueONelement(temp,flag,eID),frames)
+    histoValue = map(lambda temp : VectorToTensor(temp,flag),map(lambda temp:getValueONelement(temp,flag,eID),frames))
+    #histoValue=map(lambda temp : VectorToTensor(temp,flag),histoVec)
     return histoValue     
 
 #+------------------------+
@@ -258,18 +262,15 @@ def calcuParameter(histoLE,histoS,Para):
     'Calculate the Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter'
     'Returns the field for Countor plotting' 
     'Input Dir with the Parameter for Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter (E,K,S_yield)'
-    minLE = map(lambda temp: getTimeMin(temp,'LE'),histoLE)
-    maxLE = map(lambda temp: getTimeMax(temp,'LE'),histoLE)
-    maxS = map(lambda temp: getTimeMax(temp,'S'),histoS)
-    #maxS,pos = getMAXbyRatation(histoS)
+    #minLE = map(lambda temp: getTimeMin(temp,'LE'),histoLE)
+    #maxLE = map(lambda temp: getTimeMax(temp,'LE'),histoLE)
+    #maxS = map(lambda temp: getTimeMax(temp,'S'),histoS)
+    maxS,pos = getMAXbyRotation(histoS)
     SWT =[]
     FS = []
     for i in range(len(minLE)):
         SWT.append((calculateSWT(Para['E'],maxS[i],minLE[i],maxLE[i]),))
         FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],maxS[i],minLE[i],maxLE[i]),))
-#        print('Der Wert minLE für das Element %d betraegt %f' % (i,minLE))
-#        print('Der Wert maxLE für das Element %d betraegt %f' % (i,maxLE))
-#        print('Der Wert maxS für das Element %d betraegt %f' % (i,maxS))
     return FS,SWT
 
 #+------------------------+
@@ -288,13 +289,65 @@ def ScalarNewFieldOutput(odb,instance,frame,Name,eIDs,Field):
     
 #+------------------------+
 
-def getMAXbyRatation(histo):
-    
-    return MaxValaue,Pos,R
+def getMAXbyRotation(histo):
+    'Returns the MaxValue, the Postition, the Rotationmatrix'
+    'and the frame of an time-depended Value for an element by rotating the Tensor'
+    'Input: timedependen Valau (histo)'
+    R_field = getRotatioField(0,2*math.pi,20)
+    #MaxValaues = np.zeros([len(histo),1])
+    #pos = np.zeros([len(histo),1])
+    #R = np.zeros([len(histo),1])
+    MaxValues = []
+    pos = []
+    R = []
+    for frame in range(len(histo)):
+        print(frame)
+        print
+        if TensorIsZero(histo[frame]) == True:
+            MaxValues.append(0)
+            pos.append([0,0])
+            R.append(0)
+            print('Nur Nullen')
+        else:
+            Tensor_roted  = map(lambda temp:rotT_pv(histo[frame], temp),R_field)
+            hilfsTensor = map(getMaxTension,Tensor_roted)
+            MaxValaue_roted = map(lambda temp:temp[0], hilfsTensor)
+            pos_roted = map(lambda temp:temp[1], hilfsTensor)
+            R_id = np.argmax(MaxValaue_roted)
+            MaxValues.append(MaxValaue_roted[R_id])
+            pos.append(pos_roted[R_id])
+            R.append(R_field[R_id])#
+            print('Vektor wird rotiert')
+    frame_id = np.argmax(MaxValues)
+    print('---------------------------------------')
+    print('Max Values')
+    print(MaxValues)
+    print('---------------------------------------')
+    #print(pos)
+    #print(R)
+    return MaxValues[frame_id],pos[frame_id],R[frame_id],frame_id
 
 #+------------------------+
 
+def TensorIsZero(Tensor):
+    if np.count_nonzero(Tensor) != 9:
+        temp = True
+    else:
+        temp = False
+    return temp
 
+#+------------------------+
+def getMaxTension(Tensor):
+    'Returns the maximum tension'
+    tension = np.zeros([3,1])
+    tension[0] = Tensor[0,0]
+    tension[1] = Tensor[1,1]
+    tension[2] = Tensor[2,2]
+    S_max = np.max(tension)
+    pos = np.argwhere(Tensor == S_max)
+    return S_max,pos
+
+    
 
 #+------------------------+
     
@@ -309,25 +362,32 @@ def exportVariable(Var,fileName='EXPORT.txt'):
 debug = 1
 
 if debug ==1:
-    
-    try:
-        import visualization
-        from abaqusConstants import *
-        from abaqus import *
-        from caeModules import *
-    except:
-        from odbAccess import *
+    print('Start')
+    from textRepr import * 
+    import visualization
+    from abaqusConstants import *
+    import math
+    import abaqus
+    from odbAccess import *
+    #from odbAccess import *
 #Run DEBUG Mode
 #odb=OPENodb('TEST','Shear_OneElement.odb')
     odb=OPENodb('TEST','Benchmark_Coarse.odb')
     frames = getFrames('Step-1',odb)
     eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'].name)
     Para = {'E':200000,'k':0.5,'S_yield':1200}
-    FS,SWT = calcuParameter(histoLE,histoS,Para)
-    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
-    odb=OPENodb('TEST','Benchmark_Coarse.odb')
-    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
-    odb=OPENodb('TEST','Benchmark_Coarse.odb')
+    histo = histoS[-1]
+    MaxValue,pos,R,frame_id = getMAXbyRotation(histo)
+    print(MaxValue)
+    print(pos)
+    print(R)
+    print(frame_id)
+    #FS,SWT = calcuParameter(histoLE,histoS,Para)
+    
+#    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+#    odb=OPENodb('TEST','Benchmark_Coarse.odb')
+#    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+#    odb=OPENodb('TEST','Benchmark_Coarse.odb')
 
 
 
