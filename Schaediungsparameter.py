@@ -28,15 +28,13 @@ This is a temporary script file.
 #+----------------------+
 #	
 
-import visualization
-from abaqusConstants import *
-import math
-import abaqus
-from odbAccess import *
+    
+    
 import time
 import numpy as np
 import warnings
-
+import math
+from textRepr import * 
 def tic():
     # Homemade version of matlab tic and toc functions
     global startTime_for_tictoc
@@ -130,6 +128,53 @@ def VectorToTensor(Vec,flag):
         Tensor[2,1] =Vec[5]#3,2
         print(Tensor)
     return Tensor
+
+#+------------------------+   
+
+# Calculates Rotation Matrix given euler angles.
+def eulerAnglesToRotationMatrix(theta) :
+    ''
+    'From https://www.learnopencv.com/rotation-matrix-to-euler-angles/'
+     
+    R_x = np.array([[1,         0,                  0                   ],
+                    [0,         math.cos(theta[0]), -math.sin(theta[0]) ],
+                    [0,         math.sin(theta[0]), math.cos(theta[0])  ]
+                    ])
+         
+         
+                     
+    R_y = np.array([[math.cos(theta[1]),    0,      math.sin(theta[1])  ],
+                    [0,                     1,      0                   ],
+                    [-math.sin(theta[1]),   0,      math.cos(theta[1])  ]
+                    ])
+                 
+    R_z = np.array([[math.cos(theta[2]),    -math.sin(theta[2]),    0],
+                    [math.sin(theta[2]),    math.cos(theta[2]),     0],
+                    [0,                     0,                      1]
+                    ])
+                     
+                     
+    R = np.dot(R_z, np.dot( R_y, R_x ))
+ 
+    return R
+
+#+------------------------+
+
+def getRotatioField(T_max,n):
+    'Return all Ratationsmatrx for all angel(radian)'
+    'input: Intial Angel: T_0, Maximal Angel T_max, Delta T'
+        #print('New Theta Field will genarated an exported')
+    T = np.linspace(0,T_max,n)
+        # For numpy Version '1.13.3'
+    theta = np.array(np.meshgrid(T, T, T)).T.reshape(-1,3) # Matrix, which contains all combines of theta from 0,2*Pi
+    R = map(eulerAnglesToRotationMatrix,theta)
+    return R
+
+#+------------------------+
+
+def rotT_pv(T, g):     # @pv.'s soln
+    'Rotation of Tensor nach https://stackoverflow.com/questions/4962606/fast-tensor-rotation-with-numpy'
+    return np.einsum('ac,bd,ab->cd', g, g, T)
     
 #+------------------------+
  
@@ -183,31 +228,18 @@ def getTimeMin(histoValue,flag):
 
 #+------------------------+
 
-def getTimenMax(histoValue,flag):
+def getTimeMax(histoValue,flag):
     Max = np.max(map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
     return Max
 
 #+-------------------------+
+    
 def getTimeMinMax(histoValue,flag):
     Max = np.max(map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
     Min = np.min(map(getMinEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
     return Min,Max
-#+------------------------+
-def calcuParameter(histoLE,histoS,Para):
-    'Calculate the Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter'
-    'Returns the field for Countor plotting' 
-    'Input Dir with the Parameter for Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter (E,K,S_yield)'
-    minLE = map(lambda temp: getTimeMin(temp,'LE'),histoLE)
-    maxLE = map(lambda temp: getTimenMax(temp,'LE'),histoLE)
-    maxS = map(lambda temp: getTimenMax(temp,'S'),histoS)
-    SWT =[]
-    FS = []
-    for i in range(len(minLE)):
-        SWT.append((calculateSWT(Para['E'],maxS[i],minLE[i],maxLE[i]),))
-        FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],maxS[i],minLE[i],maxLE[i]),))
-    return FS,SWT
-#+------------------------+
 
+#+------------------------+
     
 def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
     'generats the fieldOutput for the  with the pretended Function'
@@ -221,7 +253,27 @@ def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
     return eIDs,histoS,histoLE
 
 #+------------------------+
-     
+    
+def calcuParameter(histoLE,histoS,Para):
+    'Calculate the Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter'
+    'Returns the field for Countor plotting' 
+    'Input Dir with the Parameter for Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter (E,K,S_yield)'
+    minLE = map(lambda temp: getTimeMin(temp,'LE'),histoLE)
+    maxLE = map(lambda temp: getTimeMax(temp,'LE'),histoLE)
+    maxS = map(lambda temp: getTimeMax(temp,'S'),histoS)
+    #maxS,pos = getMAXbyRatation(histoS)
+    SWT =[]
+    FS = []
+    for i in range(len(minLE)):
+        SWT.append((calculateSWT(Para['E'],maxS[i],minLE[i],maxLE[i]),))
+        FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],maxS[i],minLE[i],maxLE[i]),))
+#        print('Der Wert minLE für das Element %d betraegt %f' % (i,minLE))
+#        print('Der Wert maxLE für das Element %d betraegt %f' % (i,maxLE))
+#        print('Der Wert maxS für das Element %d betraegt %f' % (i,maxS))
+    return FS,SWT
+
+#+------------------------+
+    
 def ScalarNewFieldOutput(odb,instance,frame,Name,eIDs,Field):
     'Genarete a new Fieldoutput for element'
     'Attention: OBD will be saved and closed. It has to be opend again'
@@ -232,9 +284,18 @@ def ScalarNewFieldOutput(odb,instance,frame,Name,eIDs,Field):
     except:
         print('Variable %s already exist' % Name)
     odb.save()
-    odb.close()
+    odb.close()    
     
+#+------------------------+
+
+def getMAXbyRatation(histo):
     
+    return MaxValaue,Pos,R
+
+#+------------------------+
+
+
+
 #+------------------------+
     
 def exportVariable(Var,fileName='EXPORT.txt'):
@@ -245,23 +306,30 @@ def exportVariable(Var,fileName='EXPORT.txt'):
 #+------------------------+
 
 
+debug = 1
 
-
+if debug ==1:
+    
+    try:
+        import visualization
+        from abaqusConstants import *
+        from abaqus import *
+        from caeModules import *
+    except:
+        from odbAccess import *
 #Run DEBUG Mode
 #odb=OPENodb('TEST','Shear_OneElement.odb')
-odb=OPENodb('TEST','Benchmark_Coarse.odb')
-frames = getFrames('Step-1',odb)
-eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'].name)
-Para = {'E':200000,'k':0.5,'S_yield':1200}
-FS,SWT = calcuParameter(histoLE,histoS,Para)
+    odb=OPENodb('TEST','Benchmark_Coarse.odb')
+    frames = getFrames('Step-1',odb)
+    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'].name)
+    Para = {'E':200000,'k':0.5,'S_yield':1200}
+    FS,SWT = calcuParameter(histoLE,histoS,Para)
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+    odb=OPENodb('TEST','Benchmark_Coarse.odb')
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+    odb=OPENodb('TEST','Benchmark_Coarse.odb')
 
 
-
-ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
-odb=OPENodb('TEST','Benchmark_Coarse.odb')
-
-ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
-odb=OPENodb('TEST','Benchmark_Coarse.odb')
 
 #histoValue = getValueHistory(odb,'S',0)
 #print('LE-Wert von Element:1')
