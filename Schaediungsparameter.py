@@ -293,7 +293,7 @@ def getMAXbyRotation(histo):
     'Returns the MaxValue, the Postition, the Rotationmatrix'
     'and the frame of an time-depended Value for an element by rotating the Tensor'
     'Input: timedependen Valau (histo)'
-    R_field = getRotatioField(0,2*math.pi,20)
+    R_field = getRotatioField(0,2*math.pi,200)
     #MaxValaues = np.zeros([len(histo),1])
     #pos = np.zeros([len(histo),1])
     #R = np.zeros([len(histo),1])
@@ -371,8 +371,9 @@ if debug ==1:
     from odbAccess import *
     #from odbAccess import *
 #Run DEBUG Mode
-#odb=OPENodb('TEST','Shear_OneElement.odb')
-    odb=OPENodb('TEST','Benchmark_Coarse.odb')
+    #odb=OPENodb('TEST','Shear_OneElement.odb')
+    #odb=OPENodb('TEST','Benchmark_Fine.odb')
+    odb=OPENodb('TEST','Lochscheibe_Fine.odb')
     frames = getFrames('Step-1',odb)
     eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'].name)
     Para = {'E':200000,'k':0.5,'S_yield':1200}
