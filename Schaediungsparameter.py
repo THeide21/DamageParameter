@@ -214,6 +214,8 @@ def calculateSWT(E,S_max,E_min,E_max):
     temp = (E_max-E_min)/(2*S_max*E)
     if temp > 0:
         SWF=np.sqrt(temp)
+    else:
+        SWF = 0
     return SWF
 
 #+------------------------+
@@ -252,6 +254,11 @@ def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
     frames = getFrames('Step-1',odb)
     instance = odb.rootAssembly.instances[instance_name]
     eIDs=getEIDS(instance,El_SetName)
+#    histoS = []
+#    histoLE = []
+#    for i in range(len(eIDs)):
+#        histoS.append(getValueHistory(odb,'S',i))
+#        histoLE.append(getValueHistory(odb,'LE',i))
     histoS = map(lambda temp: getValueHistory(odb,'S',temp),range(len(eIDs)))
     histoLE = map(lambda temp: getValueHistory(odb,'LE',temp),range(len(eIDs)))
     return eIDs,histoS,histoLE
@@ -279,11 +286,8 @@ def ScalarNewFieldOutput(odb,instance,frame,Name,eIDs,Field):
     'Genarete a new Fieldoutput for element'
     'Attention: OBD will be saved and closed. It has to be opend again'
     'Input:odb,instance,frame,Name and eIDs and Field as tuple'
-    try:
-        FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
-        FieldOut.addData(position=INTEGRATION_POINT,instance=instance,labels=eIDS,data=Field)
-    except:
-        print('Variable %s already exist' % Name)
+    FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
+    FieldOut.addData(position=INTEGRATION_POINT,instance=instance,labels=eIDS,data=Field)
     odb.save()
     odb.close()    
     
@@ -293,7 +297,7 @@ def getMAXbyRotation(histo):
     'Returns the MaxValue, the Postition, the Rotationmatrix'
     'and the frame of an time-depended Value for an element by rotating the Tensor'
     'Input: timedependen Valau (histo)'
-    R_field = getRotatioField(0,2*math.pi,200)
+    R_field = getRotatioField(0,2*math.pi,30)
     #MaxValaues = np.zeros([len(histo),1])
     #pos = np.zeros([len(histo),1])
     #R = np.zeros([len(histo),1])
@@ -301,13 +305,10 @@ def getMAXbyRotation(histo):
     pos = []
     R = []
     for frame in range(len(histo)):
-        print(frame)
-        print
         if TensorIsZero(histo[frame]) == True:
             MaxValues.append(0)
             pos.append([0,0])
             R.append(0)
-            print('Nur Nullen')
         else:
             Tensor_roted  = map(lambda temp:rotT_pv(histo[frame], temp),R_field)
             hilfsTensor = map(getMaxTension,Tensor_roted)
@@ -317,14 +318,7 @@ def getMAXbyRotation(histo):
             MaxValues.append(MaxValaue_roted[R_id])
             pos.append(pos_roted[R_id])
             R.append(R_field[R_id])#
-            print('Vektor wird rotiert')
     frame_id = np.argmax(MaxValues)
-    print('---------------------------------------')
-    print('Max Values')
-    print(MaxValues)
-    print('---------------------------------------')
-    #print(pos)
-    #print(R)
     return MaxValues[frame_id],pos[frame_id],R[frame_id],frame_id
 
 #+------------------------+
@@ -337,6 +331,7 @@ def TensorIsZero(Tensor):
     return temp
 
 #+------------------------+
+
 def getMaxTension(Tensor):
     'Returns the maximum tension'
     tension = np.zeros([3,1])
@@ -344,9 +339,77 @@ def getMaxTension(Tensor):
     tension[1] = Tensor[1,1]
     tension[2] = Tensor[2,2]
     S_max = np.max(tension)
-    pos = np.argwhere(Tensor == S_max)
+    pos_temp =  np.argwhere(S_max==tension)
+    if (pos_temp == [0,0]).all:
+        pos = [0,0]
+    elif (pos_temp).all == [1,0]:
+        pos = [1,1]
+    elif (pos_temp).all == [2,0]:
+        pos = [2,2]
+    else:
+         print('Fehler ! in getMaxTension')       
     return S_max,pos
 
+    
+#+------------------------+
+
+def getMinTension(Tensor):
+    'Returns the minium tension'
+    tension = np.zeros([3,1])
+    tension[0] = Tensor[0,0]
+    tension[1] = Tensor[1,1]
+    tension[2] = Tensor[2,2]
+    S_min = np.min(tension)
+    pos = np.argwhere(Tensor == S_min)
+    if (pos_temp == [0,0]).all:
+        pos = [0,0]
+    elif (pos_temp).all == [1,0]:
+        pos = [1,1]
+    elif (pos_temp).all == [2,0]:
+        pos = [2,2]
+    else:
+         print('Fehler ! in getMaxTension')      
+    return S_min,pos
+
+#+------------------------+
+
+def getStrainForSWT(histo,R,pos): 
+    hist_roted = map(lambda temp: rotT_pv(temp, R),histo)#
+    histo_component = map(lambda temp: temp[pos[0],pos[1]],hist_roted)
+    histo_min = np.min(histo_component)
+    histo_max = np.max(histo_component)
+    return histo_min, histo_max
+
+ 
+#+------------------------+
+
+def getStrainForFS(histo,R,pos): 
+    hist_roted = map(lambda temp: rotT_pv(temp, R),histo)#
+    if pos == [0,0]:
+        histo_component_1 = map(lambda temp: temp[1,0],hist_roted)
+        histo_component_2 = map(lambda temp: temp[2,0],hist_roted)
+    elif pos == [1,1]:
+        histo_component_1 = map(lambda temp: temp[0,1],hist_roted)
+        histo_component_2 = map(lambda temp: temp[2,1],hist_roted)
+    elif pos == [2,2]:
+        histo_component_1 = map(lambda temp: temp[0,2],hist_roted)
+        histo_component_2 = map(lambda temp: temp[1,2],hist_roted)
+    else:
+        print('Error in getStrainForFS')
+    histo_min = np.min(np.min(histo_component_1),np.min(histo_component_2))
+    histo_max = np.max(np.max(histo_component_1),np.max(histo_component_2))
+    return histo_min, histo_max
+
+#+------------------------+
+
+
+
+#+------------------------+
+
+
+
+#+------------------------+
+ 
     
 
 #+------------------------+
@@ -363,6 +426,7 @@ debug = 1
 
 if debug ==1:
     print('Start')
+    tic()
     from textRepr import * 
     import visualization
     from abaqusConstants import *
@@ -370,26 +434,43 @@ if debug ==1:
     import abaqus
     from odbAccess import *
     #from odbAccess import *
-#Run DEBUG Mode
-    #odb=OPENodb('TEST','Shear_OneElement.odb')
-    #odb=OPENodb('TEST','Benchmark_Fine.odb')
-    odb=OPENodb('TEST','Lochscheibe_Fine.odb')
-    frames = getFrames('Step-1',odb)
-    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'].name)
-    Para = {'E':200000,'k':0.5,'S_yield':1200}
-    histo = histoS[-1]
-    MaxValue,pos,R,frame_id = getMAXbyRotation(histo)
-    print(MaxValue)
-    print(pos)
-    print(R)
-    print(frame_id)
-    #FS,SWT = calcuParameter(histoLE,histoS,Para)
+    #Run DEBUG Mode
+   
     
-#    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
-#    odb=OPENodb('TEST','Benchmark_Coarse.odb')
-#    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
-#    odb=OPENodb('TEST','Benchmark_Coarse.odb')
 
+    odb=OPENodb('TEST','1_Probe_Quater_Coarse.odb')
+    #odb=OPENodb('TEST','Benchmark_Coarse.odb')
+    frames = getFrames('Step-1',odb)
+
+    
+    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['POBE-1'].name)
+    Para = {'E':200000,'k':0.5,'S_yield':1200}    
+    FS = []
+    SWT = []
+    print('----------------------------------')
+    print('Berechnung der Paramter')
+    for eID in range(len(eIDS)):
+        print('----------------------------------')
+        print(eID)
+        S_max,pos,R,frame_id = getMAXbyRotation(histoS[eID])
+        E_SWT_min,E_SWT_max=getStrainForSWT(histoLE[eID],R,pos)
+        E_FS_min,E_FS_max=getStrainForFS(histoLE[eID],R,pos)
+        SWT.append((calculateSWT(Para['E'],S_max,E_SWT_min,E_SWT_max),))
+        FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],S_max,E_FS_min,E_FS_max),))
+        toc()
+        print('----------------------------------')
+    toc()
+    
+    print('----------------------------------')
+    
+    print('----------------------------------')
+    print('Counter Plotting')
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+    odb=OPENodb('TEST','1_Probe_Quater_Coarse.odb')
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+    odb=OPENodb('TEST','1_Probe_Quater_Coarse.odb')
+    toc()
+    print('----------------------------------')
 
 
 #histoValue = getValueHistory(odb,'S',0)

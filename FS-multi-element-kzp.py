@@ -34,7 +34,7 @@ ALPHA = [0,10,20,25,30,35,40,45,50,60,70,80,90,100,110,120,125,130,131,135,140,1
 #ALPHA = [30]
 BETA = [90] 
 #
-odbPathName = 'C:\Users\ThomasHeidebrecht\Documents\Abaqus\Shear_OneElement.odb'
+odbPathName = 'C:\Users\ThomasHeidebrecht\Documents\Abaqus\Lochscheibe_Fine.odb'
 oldStepName = 'Step-1'
 #
 #
@@ -237,7 +237,7 @@ print(fatigue_Parameter)
 #
 #print maxFP
 from operator import itemgetter
-print (sorted(maxFP, key=itemgetter(4)))
+#print (sorted(maxFP, key=itemgetter(4)))
 #
 print('FERTIG')
 #
