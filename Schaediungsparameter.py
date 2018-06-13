@@ -30,12 +30,20 @@ This is a temporary script file.
 
     
     
-import time
+import time, math, warnings, sys, os
 import numpy as np
-import warnings
-import math
+ 
 import itertools as it
-
+try:
+    from textRepr import * 
+    import visualization
+    from abaqusConstants import *
+    import math
+    import abaqus
+except:  
+    from odbAccess import *
+#except:
+#    print('Not in Abaqus-Command')
 
 def tic():
     # Homemade version of matlab tic and toc functions
@@ -55,9 +63,12 @@ def toc():
 #|   block of functions   |
 #+------------------------+
 
-def OPENodb(name_ODB,odbPathName): 
+def OPENodb(name_ODB,odbPathName,interactiveFlag = 0): 
     'Opens ODB-File as readable'
-    odb =session.openOdb(name=name_ODB, path=odbPathName, readOnly=False)     
+    if interactiveFlag == 1:
+        odb =session.openOdb(name=name_ODB, path=odbPathName, readOnly=False)
+    else:
+        odb  = openOdb(path=odbPathName, readOnly=False)
     return odb
 
 #+------------------------+
@@ -402,7 +413,24 @@ def getStrainForFS(histo,R,pos):
 
 #+------------------------+
 
-
+def makeCounterPlotof_FS_SWT(odb_name,Para,interactiveFlag = 0,setName = None):
+    'This Function creats new Counter-Plots in ODB of Smith-Watson-Tropper and Fatemi-Socie -Paramater'
+    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    frames = getFrames('Step-1',odb)
+    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['POBE-1'].name,setName)
+    FS = []
+    SWT = []
+    for eID in range(len(eIDS)):
+        S_max,pos,R,frame_id = getMAXbyRotation(histoS[eID])
+        E_SWT_min,E_SWT_max=getStrainForSWT(histoLE[eID],R,pos)
+        E_FS_min,E_FS_max=getStrainForFS(histoLE[eID],R,pos)
+        SWT.append((calculateSWT(Para['E'],S_max,E_SWT_min,E_SWT_max),))
+        FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],S_max,E_FS_min,E_FS_max),))
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    return 
 
 #+------------------------+
 
@@ -422,61 +450,22 @@ def exportVariable(Var,fileName='EXPORT.txt'):
 #+------------------------+
 
 
-debug = 1
-
-if debug ==1:
-    print('Start')
-    tic()
-    from textRepr import * 
-    import visualization
-    from abaqusConstants import *
-    import math
-    import abaqus
-    from odbAccess import *
-    #from odbAccess import *
-    #Run DEBUG Mode
-   
-    
-
-    odb=OPENodb('TEST','1_Probe_Quater_Coarse.odb')
-    #odb=OPENodb('TEST','Benchmark_Coarse.odb')
-    frames = getFrames('Step-1',odb)
 
     
-    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['POBE-1'].name)
-    Para = {'E':216000,'k':0.5,'S_yield':1000}    
-    FS = []
-    SWT = []
-    print('----------------------------------')
-    print('Berechnung der Paramter')
-    for eID in range(len(eIDS)):
-        print('----------------------------------')
-        print(eID)
-        S_max,pos,R,frame_id = getMAXbyRotation(histoS[eID])
-        E_SWT_min,E_SWT_max=getStrainForSWT(histoLE[eID],R,pos)
-        E_FS_min,E_FS_max=getStrainForFS(histoLE[eID],R,pos)
-        SWT.append((calculateSWT(Para['E'],S_max,E_SWT_min,E_SWT_max),))
-        FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],S_max,E_FS_min,E_FS_max),))
-        toc()
-        print('----------------------------------')
-    toc()
+if __name__ == '__main__':
+# Wert reinfolge für aufruf aus Konsole
+# E-Modul, k, Zugfestigkeit, odb-Name, Set-Name
+    rawArgList = sys.argv
+    interactiveFlag = 1
+    Para = {}
+    Para['E'] = rawArgList[1]
+    Para['k'] = rawArgList[2]
+    Para['S_yield'] = rawArgList[3]
+    odb_Name = rawArgList[4]
+    if len(rawArgList) == 6:
+        makeCounterPlotof_FS_SWT(odb_Name,Para,rawArgList[5])
+        print('I am here')
+    else:
+        makeCounterPlotof_FS_SWT(odb_Name,Para)    
     
-    print('----------------------------------')
-    
-    print('----------------------------------')
-    print('Counter Plotting')
-    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
-    odb=OPENodb('TEST','1_Probe_Quater_Coarse.odb')
-    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
-    odb=OPENodb('TEST','1_Probe_Quater_Coarse.odb')
-    toc()
-    print('----------------------------------')
 
-
-#histoValue = getValueHistory(odb,'S',0)
-#print('LE-Wert von Element:1')
-#print(histoValue)
-
-
-#HistMaxEigVal = map(getMaxEigVal,map(lambda temp : VectorToTensor(temp,'S'),histoValue))
-#exportVariable(HistMaxEigVal,fileName='EXPORT.txt')
