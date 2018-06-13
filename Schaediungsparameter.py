@@ -420,12 +420,18 @@ def makeCounterPlotof_FS_SWT(odb_name,Para,interactiveFlag = 0,setName = None):
     eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['POBE-1'].name,setName)
     FS = []
     SWT = []
+    message = 'Berechnete Parameter'
+    OB = 'Element'
+    total = len(eIDS)
+    print('Element berechnung')
     for eID in range(len(eIDS)):
+        #milestone(message,OB,eID,total)
         S_max,pos,R,frame_id = getMAXbyRotation(histoS[eID])
         E_SWT_min,E_SWT_max=getStrainForSWT(histoLE[eID],R,pos)
         E_FS_min,E_FS_max=getStrainForFS(histoLE[eID],R,pos)
         SWT.append((calculateSWT(Para['E'],S_max,E_SWT_min,E_SWT_max),))
         FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],S_max,E_FS_min,E_FS_max),))
+    print('Counter Plotting')
     ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
     odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
     ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
@@ -455,12 +461,14 @@ def exportVariable(Var,fileName='EXPORT.txt'):
 if __name__ == '__main__':
 # Wert reinfolge für aufruf aus Konsole
 # E-Modul, k, Zugfestigkeit, odb-Name, Set-Name
+# Für Konsolen aufruf
+# abaqus python DamageParameter\Schaediungsparameter.py 210000 0.5 1000 2_Probe_Quater_Fine
     rawArgList = sys.argv
     interactiveFlag = 1
     Para = {}
-    Para['E'] = rawArgList[1]
-    Para['k'] = rawArgList[2]
-    Para['S_yield'] = rawArgList[3]
+    Para['E'] = float(rawArgList[1])
+    Para['k'] =  float(rawArgList[2])
+    Para['S_yield'] = float(rawArgList[3])
     odb_Name = rawArgList[4]
     if len(rawArgList) == 6:
         makeCounterPlotof_FS_SWT(odb_Name,Para,rawArgList[5])
@@ -468,4 +476,6 @@ if __name__ == '__main__':
     else:
         makeCounterPlotof_FS_SWT(odb_Name,Para)    
     
-
+# Für Aufruf in Abaqus 
+#Para = {'E':21000,'S_yield':1000,'k':0.5}
+#odb_name = 'Benchmark_Coarse.odb'
