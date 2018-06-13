@@ -444,7 +444,7 @@ if debug ==1:
 
     
     eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['POBE-1'].name)
-    Para = {'E':200000,'k':0.5,'S_yield':1200}    
+    Para = {'E':216000,'k':0.5,'S_yield':1000}    
     FS = []
     SWT = []
     print('----------------------------------')
@@ -465,9 +465,9 @@ if debug ==1:
     
     print('----------------------------------')
     print('Counter Plotting')
-    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
     odb=OPENodb('TEST','1_Probe_Quater_Coarse.odb')
-    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['LOCHSCHEIBE_3D-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
     odb=OPENodb('TEST','1_Probe_Quater_Coarse.odb')
     toc()
     print('----------------------------------')
