@@ -4,47 +4,19 @@ Spyder Editor
 
 This is a temporary script file.
 """
-#+-------------------------------+
-#|   block of user's constants   |
-#+-------------------------------+
-#odbPathName = 'C:\Users\ThomasHeidebrecht\Documents\Abaqus\Benchmark_Coarse.odb'
-#oldStepName = 'Step-1'
-
-
-#+-------------------------------+
-#|   TO-DO:   |
-#+-------------------------------+
-# 1. Function witch creat Set of 
-#   Elements by pretending Set-Name. If no set is defined: default= all Elements)
-#2. GUI
-#
-#
-#
-#
-#
-#
-#+----------------------+
-#|   block of modules   |
-#+----------------------+
-#	
-
-    
-    
 import time, math, warnings, sys, os
 import numpy as np
- 
 import itertools as it
 try:
     from textRepr import * 
     import visualization
     from abaqusConstants import *
-    import math
     import abaqus
+    print('Richtig bei Gui')
 except:  
     from odbAccess import *
-#except:
-#    print('Not in Abaqus-Command')
-
+    print('Richtig bei Command')
+    
 def tic():
     # Homemade version of matlab tic and toc functions
     global startTime_for_tictoc
@@ -63,7 +35,7 @@ def toc():
 #|   block of functions   |
 #+------------------------+
 
-def OPENodb(name_ODB,odbPathName,interactiveFlag = 0): 
+def OPENodb(name_ODB,odbPathName,interactiveFlag): 
     'Opens ODB-File as readable'
     if interactiveFlag == 1:
         odb =session.openOdb(name=name_ODB, path=odbPathName, readOnly=False)
@@ -92,6 +64,8 @@ def getEIDS(instance,SetName = None):
     else:
         elements = instance.elementSets[SetName]
     eIDS=map(lambda element:element.label,elements)
+    print('eIDS')
+    print(eIDS)
     return eIDS
 
 #+------------------------+
@@ -105,7 +79,7 @@ def getGlobalValues(frame,flag):
  
 def getValueONelement(frame,flag,eID):
     'return of the values on ELement'
-    var = frame.fieldOutputs[flag].values[eID].data
+    var = frame.fieldOutputs[flag].values[eID-1].data
     return var
 
 #+------------------------+
@@ -124,7 +98,7 @@ def VectorToTensor(Vec,flag):
         Tensor[1,2] =Vec[5]#2,3
         Tensor[2,0] =Vec[4]#3,1
         Tensor[2,1] =Vec[5]#3,2
-    elif  flag == 'LE':
+    elif  flag == 'LE' or flag == 'E':
         Tensor[0,1] =Vec[3]*0.5#1,2
         Tensor[0,2] =Vec[4]*0.5#1,3
         Tensor[1,0] =Vec[3]*0.5#2,1
@@ -222,11 +196,15 @@ def getMinEigVal(TENSOR):
 def calculateSWT(E,S_max,E_min,E_max):
     'Calculate the Smith-Wattson-Tropper-Parameter'
     'Input:E,S_max,E_min,E_max'
-    temp = (E_max-E_min)/(2*S_max*E)
+    print('S_max,E_min,E_max')
+    print(S_max,E_min,E_max)
+    temp = (E_max-E_min)/2*S_max*E
     if temp > 0:
         SWF=np.sqrt(temp)
     else:
         SWF = 0
+    print('SWF')
+    print(SWF)
     return SWF
 
 #+------------------------+
@@ -270,8 +248,11 @@ def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
 #    for i in range(len(eIDs)):
 #        histoS.append(getValueHistory(odb,'S',i))
 #        histoLE.append(getValueHistory(odb,'LE',i))
-    histoS = map(lambda temp: getValueHistory(odb,'S',temp),range(len(eIDs)))
-    histoLE = map(lambda temp: getValueHistory(odb,'LE',temp),range(len(eIDs)))
+    histoS = map(lambda temp: getValueHistory(odb,'S',temp),eIDs)
+    try:
+        histoLE = map(lambda temp: getValueHistory(odb,'LE',temp),eIDs)
+    except:
+        histoLE = map(lambda temp: getValueHistory(odb,'E',temp),eIDs)
     return eIDs,histoS,histoLE
 
 #+------------------------+
@@ -298,7 +279,7 @@ def ScalarNewFieldOutput(odb,instance,frame,Name,eIDs,Field):
     'Attention: OBD will be saved and closed. It has to be opend again'
     'Input:odb,instance,frame,Name and eIDs and Field as tuple'
     FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
-    FieldOut.addData(position=INTEGRATION_POINT,instance=instance,labels=eIDS,data=Field)
+    FieldOut.addData(position=INTEGRATION_POINT,instance=instance,labels=eIDs,data=Field)
     odb.save()
     odb.close()    
     
@@ -308,7 +289,7 @@ def getMAXbyRotation(histo):
     'Returns the MaxValue, the Postition, the Rotationmatrix'
     'and the frame of an time-depended Value for an element by rotating the Tensor'
     'Input: timedependen Valau (histo)'
-    R_field = getRotatioField(0,2*math.pi,30)
+    R_field = getRotatioField(-math.pi,math.pi,20)
     #MaxValaues = np.zeros([len(histo),1])
     #pos = np.zeros([len(histo),1])
     #R = np.zeros([len(histo),1])
@@ -350,12 +331,11 @@ def getMaxTension(Tensor):
     tension[1] = Tensor[1,1]
     tension[2] = Tensor[2,2]
     S_max = np.max(tension)
-    pos_temp =  np.argwhere(S_max==tension)
-    if (pos_temp == [0,0]).all:
+    if tension[0] == S_max:
         pos = [0,0]
-    elif (pos_temp).all == [1,0]:
+    elif tension[1] == S_max:
         pos = [1,1]
-    elif (pos_temp).all == [2,0]:
+    elif tension[2] == S_max:
         pos = [2,2]
     else:
          print('Fehler ! in getMaxTension')       
@@ -387,6 +367,9 @@ def getMinTension(Tensor):
 def getStrainForSWT(histo,R,pos): 
     hist_roted = map(lambda temp: rotT_pv(temp, R),histo)#
     histo_component = map(lambda temp: temp[pos[0],pos[1]],hist_roted)
+    print(pos)
+    print(R)
+    print(histo_component)
     histo_min = np.min(histo_component)
     histo_max = np.max(histo_component)
     return histo_min, histo_max
@@ -413,37 +396,38 @@ def getStrainForFS(histo,R,pos):
 
 #+------------------------+
 
-def makeCounterPlotof_FS_SWT(odb_name,Para,interactiveFlag = 0,setName = None):
+def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=1,setName = None):
     'This Function creats new Counter-Plots in ODB of Smith-Watson-Tropper and Fatemi-Socie -Paramater'
+    print('In Funktion:')
+    print('odb_name,E,k,S_yield,part_Name,interactiveFlag,setName')
+    print(odb_name,E,k,S_yield,part_Name,interactiveFlag,setName)
     odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
     frames = getFrames('Step-1',odb)
-    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances['POBE-1'].name,setName)
+    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'].name,setName)
     FS = []
     SWT = []
     message = 'Berechnete Parameter'
     OB = 'Element'
     total = len(eIDS)
-    print('Element berechnung')
-    for eID in range(len(eIDS)):
+    print('Berechnung der Parameter')
+    for eID in eIDS:
         #milestone(message,OB,eID,total)
-        S_max,pos,R,frame_id = getMAXbyRotation(histoS[eID])
-        E_SWT_min,E_SWT_max=getStrainForSWT(histoLE[eID],R,pos)
-        E_FS_min,E_FS_max=getStrainForFS(histoLE[eID],R,pos)
-        SWT.append((calculateSWT(Para['E'],S_max,E_SWT_min,E_SWT_max),))
-        FS.append((calculateFS(Para['E'],Para['k'],Para['S_yield'],S_max,E_FS_min,E_FS_max),))
+        print('%f von %f Elementen' % (eID,len(eIDS)))
+        S_max,pos,R,frame_id = getMAXbyRotation(histoS[eID-1])
+        print(histoS[eID-1][frame_id])
+        print('S_max,pos,R,frame_id')
+        print(S_max,pos,R,frame_id)
+        E_SWT_min,E_SWT_max=getStrainForSWT(histoLE[eID-1],R,pos)
+        E_FS_min,E_FS_max=getStrainForFS(histoLE[eID-1],R,pos)
+        SWT.append((calculateSWT(E,S_max,E_SWT_min,E_SWT_max),))
+        FS.append((calculateFS(E,k,S_yield,S_max,E_FS_min,E_FS_max),))
     print('Counter Plotting')
-    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
     odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
-    ScalarNewFieldOutput(odb,odb.rootAssembly.instances['POBE-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
     odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
     return 
 
-#+------------------------+
-
-
-
-#+------------------------+
- 
     
 
 #+------------------------+
@@ -462,19 +446,30 @@ if __name__ == '__main__':
 # Wert reinfolge für aufruf aus Konsole
 # E-Modul, k, Zugfestigkeit, odb-Name, Set-Name
 # Für Konsolen aufruf
-# abaqus python DamageParameter\Schaediungsparameter.py 210000 0.5 1000 2_Probe_Quater_Fine
+#abaqus python Schaediungsparameter.py 210000 0.5 10000 03_Tension_Static OneElement
+    
     rawArgList = sys.argv
-    interactiveFlag = 1
+    interactiveFlag = 0
     Para = {}
-    Para['E'] = float(rawArgList[1])
-    Para['k'] =  float(rawArgList[2])
-    Para['S_yield'] = float(rawArgList[3])
-    odb_Name = rawArgList[4]
-    if len(rawArgList) == 6:
-        makeCounterPlotof_FS_SWT(odb_Name,Para,rawArgList[5])
+    E = float(rawArgList[1])
+    k =  float(rawArgList[2])
+    S_yield = float(rawArgList[3])
+    odb_name = rawArgList[4]
+    part_name = rawArgList[5]
+    print('Commandline-Mode:')
+    print('--------------------')
+    print('E: [MPa]',E)
+    print('Zugfestigkeit [MPa] ',S_yield)
+    print('k [-]:',k)
+    print('Odb-Name:',odb_name)
+    print('Part-Name:',part_name)
+    print('interactiveFlag:',interactiveFlag)
+    print('--------------------')
+    if len(rawArgList) == 7:
+        makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_name,interactiveFlag,setName)
         print('I am here')
     else:
-        makeCounterPlotof_FS_SWT(odb_Name,Para)    
+        makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_name,interactiveFlag)    
     
 # Für Aufruf in Abaqus 
 #Para = {'E':21000,'S_yield':1000,'k':0.5}
