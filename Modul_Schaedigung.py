@@ -68,10 +68,7 @@ def getEIDS(instance,SetName = None):
     else:
         SET = instance.elementSets[SetName]
         elements=SET.elements
-    eIDS=map(lambda element:element.label,elements)
-    print('eIDS')
-    print(eIDS)
-    
+    eIDS=map(lambda element:element.label,elements)    
     return eIDS
 
 #+------------------------+
@@ -211,11 +208,11 @@ def getMinEigVal(TENSOR):
 
 #+------------------------+
 
-def calculateFS(E,k,S_yield,S_max,E_min,E_max):
-    'Calculate the Fatemi-Socie-Paratmeter'
-    'Input E,k,S_max,S_yield,E_min,E_max'
-    FS = 0.5*(E_max - E_min)*(1 + k*S_max/S_yield) 
-    return FS
+#def calculateFS(E,k,S_yield,S_max,E_min,E_max):
+#    'Calculate the Fatemi-Socie-Paratmeter'
+#    'Input E,k,S_max,S_yield,E_min,E_max'
+#    FS = 0.5*(E_max - E_min)*(1 + k*S_max/S_yield) 
+#    return FS
 
 #+-------------------------+
     
@@ -281,13 +278,13 @@ def ScalarNewFieldOutput(odb,instance,frame,Name,eIDs,Field):
     'Attention: OBD will be saved and closed. It has to be opend again'
     'Input:odb,instance,frame,Name and eIDs and Field as tuple'
     FieldOut =  frame.FieldOutput(name=Name,description=Name,type=SCALAR)
-    FieldOut.addData(position=INTEGRATION_POINT,instance=instance,labels=eIDs,data=Field)
+    FieldOut.addData(position=CENTROID,instance=instance,labels=eIDs,data=Field)
     odb.save()
     odb.close()    
 
 #+------------------------+
 def VectorNewFieldOutput(odb,instance,frame,Name,eIDs,Vec):
-    FieldOut =  frame.FieldOutput(name=Name,description=Name,type=VECTOR)
+    FieldOut =  frame.FieldOutput(name=Name,description=Name,type=VECTOR,validInvariants=(MAGNITUDE,))
     FieldOut.addData(position=CENTROID,instance=instance,labels=eIDs,data=Vec)
     odb.save()
     odb.close()    
@@ -433,6 +430,52 @@ def calculateSWT(histoS,histoLE,E):
         
 #+------------------------+
     
+def calculateFS(E,k,S_yield,S_max,E_amp):
+    'Calculate the Fatemi-Socie-Paratmeter'
+    FS = 0.5*(E_amp)*(1 + k*S_max/S_yield) 
+    return FS
+
+#-------------------------+
+
+def getAmplitude(histo):
+    'return the Amplitude of an timedepented-Variable'
+    Max = np.max(histo)
+    Min = np.min(histo)
+    return Max-Min
+
+#-------------------------+
+    
+def getMaxFSbyRotation(histoS,histoLE,E,S_yield,k):
+    R_field = getRotatioField(-math.pi,math.pi,10)
+    MaxValues = []
+    pos = []
+    for R in R_field:
+        S_roted  = map(lambda temp: rotT_pv(temp, R),histoS)
+        LE_roted  = map(lambda temp: rotT_pv(temp, R),histoLE) 
+        n_1_max =np.max(map(lambda Tensor:Tensor[0,0],S_roted))  # Normalspannungen
+        n_2_max=np.max(map(lambda Tensor:Tensor[1,1],S_roted)) # Normalspannungen
+        n_3_max=np.max(map(lambda Tensor:Tensor[2,2],S_roted)) # Normalspannungen
+        E_S_12 = getAmplitude(map(lambda temp:temp[0,1],LE_roted))    # Scherung 1,2
+        E_S_13= getAmplitude(map(lambda temp:temp[0,2],LE_roted))    # Scherung 1,3
+        E_S_23 = getAmplitude(map(lambda temp:temp[1,2],LE_roted))    # Scherung 2,3
+        FS_temp = np.array([[calculateFS(E,k,S_yield,n_1_max,E_S_13),calculateFS(E,k,S_yield,n_1_max,E_S_12)],[calculateFS(E,k,S_yield,n_2_max,E_S_12),calculateFS(E,k,S_yield,n_2_max,E_S_23)],[calculateFS(E,k,S_yield,n_3_max,E_S_13),calculateFS(E,k,S_yield,n_3_max,E_S_23)]])
+        FS_arg = np.unravel_index(np.argmax(FS_temp, axis=None), FS_temp.shape) 
+        MaxValues.append(FS_temp[FS_arg]) 
+        if FS_arg[0] == 0:
+            pos.append([0,0])
+        elif FS_arg[0] == 1:
+            pos.append([1,1])
+        elif FS_arg[0] == 2:
+            pos.append([2,2])
+        else:
+            print('Fehler in getMaxFSbyRotation')
+        arg = np.argmax(MaxValues)
+        FS = MaxValues[arg]
+        FS_vec = creatPlane(pos[arg],R_field[arg])
+    return FS,FS_vec
+
+#+------------------------+
+    
 def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=0,setName = None):
     'This Function creats new Counter-Plots in ODB of Smith-Watson-Tropper and Fatemi-Socie -Paramater'
 #    print('In Funktion:')
@@ -442,40 +485,55 @@ def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=0,se
     frames = getFrames('Step-1',odb)
     eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'].name,setName)
     FS = []
-    FS_Vec = []
+    FS_vec = []
     SWT = []
     SWT_vec = []
     message = 'Berechnete Parameter'
     OB = 'Element'
     total = len(eIDS)
     print('Berechnung der Parameter')
-    for eID in eIDS:
-        #milestone(message,OB,eID,total)
-        print('%d von %d Elementen' % (eID,len(eIDS)))
+    for jj in range(len(eIDS)):
+        print('%d von %d Elementen' % (jj,len(eIDS)))
         # Berchnung von SWT
-        #S_max,pos,R,frame_id = getMAXbyRotation(histoS[eID])
-        #E_SWT_min,E_SWT_max=getStrainForSWT(histoLE[eID-1],R,pos)
-        E_FS_min,E_FS_max=getStrainForFS(histoLE[eID-1],R,pos)
-        SWT_temp=calculateSWT(histoS[eID-1],histoLE[eID-1],E)
+        SWT_temp=calculateSWT(histoS[jj],histoLE[jj],E)
         SWT.append((SWT_temp[0],))
         SWT_vec.append(SWT_temp[1])
-        #print(SWT_vec)
-        #FS.append((calculateFS(E,k,S_yield,S_max,E_FS_min,E_FS_max),))
-        
+        #Berechnun von FS
+        FS_temp = getMaxFSbyRotation(histoS[jj],histoLE[jj],E,S_yield,k)
+        FS.append((FS_temp[0],))
+        FS_vec.append(FS_temp[1])
+        print(SWT_temp[0])
+        print(SWT_temp[1])
+        print(FS_temp[0])
+        print(FS_temp[1])
     print('Counter Plotting')
+    #----------------------------------------------------------------------------------------------------------------------------
     try:
         ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
         odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
     except:
         print('SWT exestiert')
-
-    VectorNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT_Vec',tuple(eIDS),tuple(SWT_vec))
-    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
-
-
-    #ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
-    #odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
-    return 
+    #----------------------------------------------------------------------------------------------------------------------------
+    try:
+        VectorNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT_Vec',tuple(eIDS),tuple(SWT_vec))
+        odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    except:
+        print('SWT-Vec exestiert')
+    #----------------------------------------------------------------------------------------------------------------------------   
+        
+    try:
+        ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+        odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    except:
+        print('FS exestiert')
+    #----------------------------------------------------------------------------------------------------------------------------
+    try:
+        VectorNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'FS_Vec',tuple(eIDS),tuple(FS_vec))
+        odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    except:
+        print('FS-Vec exestiert')     
+    #----------------------------------------------------------------------------------------------------------------------------
+     
 
     
 

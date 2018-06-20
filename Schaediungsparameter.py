@@ -28,8 +28,9 @@ if __name__ == '__main__' and debug == 0:
 # Wert reinfolge für aufruf aus Konsole
 # E-Modul, k, Zugfestigkeit, odb-Name, Set-Name
 # Für Konsolen aufruf
-#abaqus python Schaediungsparameter.py 210000 0.5 10000 03_Tension_Static OneElement
-#abaqus python Schaediungsparameter.py 210000 0.5 10000 05_Validierung Pobe Set-2
+#abaqus python Schaediungsparameter.py 210000 0.5 1000 03_Tension_Static OneElement
+#abaqus python Schaediungsparameter.py 210000 0.5 1000 05_Validierung Pobe Set-2
+#abaqus python Schaediungsparameter.py 204900 0.5 1000 07_Validierung_Coarse_Mat Pobe
     
     rawArgList = sys.argv
     interactiveFlag = 0
@@ -49,7 +50,6 @@ if __name__ == '__main__' and debug == 0:
     print('interactiveFlag:',interactiveFlag)
     print('--------------------')
     if len(rawArgList) == 7:
-        print('I am here')
         setName = rawArgList[6]
         makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_name,interactiveFlag,setName.upper())
         
