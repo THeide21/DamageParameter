@@ -8,7 +8,7 @@ toolset = getAFXApp().getAFXMainWindow().getPluginToolset()
 toolset.registerGuiMenuButton(
     buttonText='fatigueParameter', 
     object=Activator(os.path.join(thisDir, 'fatigueParameterDB.py')),
-    kernelInitString='import Schaediungsparameter',
+    kernelInitString='import startupGUI',
     messageId=AFXMode.ID_ACTIVATE,
     icon=None,
     applicableModules=ALL,
