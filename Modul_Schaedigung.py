@@ -6,6 +6,7 @@ Created on Sun Jun 17 11:38:17 2018
 """
 import time, math, warnings, sys, os
 import numpy as np
+import scipy as sc
 import itertools as it
 try:
     from textRepr import * 
@@ -169,11 +170,11 @@ def rotT_pv(T, g):     # @pv.'s soln
     
 #+------------------------+
  
-def getValueHistory(odb,flag,eID):
+def getValueHistory(odb,stepName,flag,eID):
     'INPUt: odb,flag,eID'
     'Returns the time course of LE or S (flag) of the Elemente with the eID'
     histoValue = []
-    frames = getFrames('Step-1',odb)
+    frames = getFrames(stepName,odb)
     histoValue = map(lambda temp : VectorToTensor(temp,flag),map(lambda temp:getValueONelement(temp,flag,eID),frames))
     #histoValue=map(lambda temp : VectorToTensor(temp,flag),histoVec)
     return histoValue     
@@ -194,27 +195,6 @@ def getMinEigVal(TENSOR):
     minValue=EigVal.min()
     return minValue    
 
-#+------------------------+
-    
-#def calculateSWT(E,S_max,E_min,E_max):
-#    'Calculate the Smith-Wattson-Tropper-Parameter'
-#    'Input:E,S_max,E_min,E_max'
-#    temp = (E_max-E_min)/2*S_max*E
-#    if temp > 0:
-#        SWF=np.sqrt(temp)
-#    else:
-#        SWF = 0
-#    return SWF
-
-#+------------------------+
-
-#def calculateFS(E,k,S_yield,S_max,E_min,E_max):
-#    'Calculate the Fatemi-Socie-Paratmeter'
-#    'Input E,k,S_max,S_yield,E_min,E_max'
-#    FS = 0.5*(E_max - E_min)*(1 + k*S_max/S_yield) 
-#    return FS
-
-#+-------------------------+
     
 def getTimeMin(histoValue,flag):
     Min = np.min(map(getMinEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
@@ -235,23 +215,18 @@ def getTimeMinMax(histoValue,flag):
 
 #+------------------------+
     
-def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
+def getDataForAreaOfIntrest(odb,instance_name,stepName,El_SetName=None):
     'generats the fieldOutput for the  with the pretended Function'
-    'Input:frames,elements,func'
+    'Input:odb,instance_name,stepName,El_SetName=None'
     'Return:eIDS,histS,histoLE'
-    frames = getFrames('Step-1',odb)
+    frames = getFrames(stepName,odb)
     instance = odb.rootAssembly.instances[instance_name]
-    eIDs=getEIDS(instance,El_SetName)
-#    histoS = []
-#    histoLE = []
-#    for i in range(len(eIDs)):
-#        histoS.append(getValueHistory(odb,'S',i))
-#        histoLE.append(getValueHistory(odb,'LE',i))
-    histoS = map(lambda temp: getValueHistory(odb,'S',temp),eIDs)
+    eIDs=getEIDS(instance,El_SetName) 
+    histoS = map(lambda temp: getValueHistory(odb,stepName,'S',temp),eIDs)
     try:
-        histoLE = map(lambda temp: getValueHistory(odb,'LE',temp),eIDs)
+        histoLE = map(lambda temp: getValueHistory(odb,stepName,'LE',temp),eIDs)
     except:
-        histoLE = map(lambda temp: getValueHistory(odb,'E',temp),eIDs)
+        histoLE = map(lambda temp: getValueHistory(odb,stepName,'E',temp),eIDs)
     return eIDs,histoS,histoLE
 
 #+------------------------+
@@ -469,21 +444,41 @@ def getMaxFSbyRotation(histoS,histoLE,E,S_yield,k):
             pos.append([2,2])
         else:
             print('Fehler in getMaxFSbyRotation')
-        arg = np.argmax(MaxValues)
-        FS = MaxValues[arg]
-        FS_vec = creatPlane(pos[arg],R_field[arg])
+    arg = np.argmax(MaxValues)
+    FS = MaxValues[arg]
+    FS_vec = creatPlane(pos[arg],R_field[arg])
     return FS,FS_vec
+#+------------------------+
+def calcFatLifeSWT(SWT_list,eIDS,b,c,sigma_F,epsilion_F,E,portion = 0.05):
+    if portion == 0 or len(SWT_list)==1:
+        eIDS_short = eIDS
+        SWT_short= SWT_list
+    else:
+        arg = np.argsort(np.array(SWT_list))
+        eIDS_sort = np.array(eIDS)[arg]
+        SWT_sort = np.array(SWT_list)[arg]
+        eIDS_short = eIDS_sort[int(len(SWT_list)*(1-portion)):]
+        SWT_short = SWT_sort[int(len(SWT_list)*(1-portion)):]
+    N=[]
+    for SWT in SWT_short:
+        data = (SWT,sigma_F,epsilion_F,E,b,c)
+        N.append(sc.optimize.fsolve(SWT_eq,1,data)[0])
+    return eIDS_short,N
 
 #+------------------------+
+def SWT_eq(N,*data):
+    SWT,sigma_F,epsilion_F,E,b,c = data
+    return np.power(np.power(sigma_F,2)*np.power(2*N,2*b)+sigma_F*epsilion_F*E*np.power(2*N,(b+c)),0.5)-SWT
+#+------------------------+
     
-def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=0,setName = None):
+def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,StepName,interactiveFlag=0,setName = None):
     'This Function creats new Counter-Plots in ODB of Smith-Watson-Tropper and Fatemi-Socie -Paramater'
 #    print('In Funktion:')
 #    print('odb_name,E,k,S_yield,part_Name,interactiveFlag,setName')
 #    print(odb_name,E,k,S_yield,part_Name,interactiveFlag,setName)
     odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
-    frames = getFrames('Step-1',odb)
-    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'].name,setName)
+    frames = getFrames(StepName,odb)
+    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'].name,StepName,setName)
     FS = []
     FS_vec = []
     SWT = []
@@ -493,7 +488,7 @@ def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=0,se
     total = len(eIDS)
     print('Berechnung der Parameter')
     for jj in range(len(eIDS)):
-        print('%d von %d Elementen' % (jj,len(eIDS)))
+        #print('%d von %d Elementen' % (jj,len(eIDS)))
         # Berchnung von SWT
         SWT_temp=calculateSWT(histoS[jj],histoLE[jj],E)
         SWT.append((SWT_temp[0],))
@@ -507,7 +502,26 @@ def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=0,se
         print(FS_temp[0])
         print(FS_temp[1])
     print('Counter Plotting')
-    #----------------------------------------------------------------------------------------------------------------------------
+#    ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+#    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+#    VectorNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT_Vec',tuple(eIDS),tuple(SWT_vec))
+#    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+#    ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+#    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+#    VectorNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'FS_Vec',tuple(eIDS),tuple(FS_vec))
+#    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    #Ploting life-Time nach SWT
+    # Einlesen SWT über GUI Später; 
+    b = -0.113
+    c = -610
+    sigma_F = 1311
+    epsilion_F = 0.8755
+    portion = 1
+    eIDs_SWT,N_SWT = calcFatLifeSWT(SWT,eIDS,b,c,sigma_F,epsilion_F,E,)
+    ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'N_SWT',tuple(eIDs_SWT),tuple(N_SWT))
+    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    #
+#    #----------------------------------------------------------------------------------------------------------------------------
     try:
         ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
         odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
@@ -532,7 +546,7 @@ def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=0,se
         odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
     except:
         print('FS-Vec exestiert')     
-    #----------------------------------------------------------------------------------------------------------------------------
+#    #----------------------------------------------------------------------------------------------------------------------------
      
 
     

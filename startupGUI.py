@@ -19,5 +19,5 @@ def startupGUI(odb_name,part_name,E,k,S_yield,StepName,SetName=None):
     if var == 1: 
         print('Auswertung könnte nicht durchgeführt werden')
     else:
-        print('Auswertung wurde durchgeführt')
+        print('Auswertung wurde durchgefuehrt')
     return 
