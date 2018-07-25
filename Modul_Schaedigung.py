@@ -6,7 +6,9 @@ Created on Sun Jun 17 11:38:17 2018
 """
 import time, math, warnings, sys, os
 import numpy as np
+#import scipy as sc
 import itertools as it
+import logging
 try:
     from textRepr import * 
     import visualization
@@ -37,14 +39,12 @@ def toc():
 
 def OPENodb(name_ODB,odbPathName,interactiveFlag): 
     'Opens ODB-File as readable'
-    if interactiveFlag == 1:
+    if interactiveFlag == 0:
         print('session')
-        odb =session.openOdb(name=name_ODB, path=odbPathName, readOnly=False)
-        
+        odb =session.openOdb(name=name_ODB, path=odbPathName, readOnly=False)    
     else:
         print('openOdb')
         odb  = openOdb(path=odbPathName, readOnly=False)
-        
     return odb
 
 #+------------------------+
@@ -62,13 +62,15 @@ def getSteps(odb):
 
 #+------------------------+
  
-def getEIDS(instance,SetName = None): 
-    if SetName == None:
+def getEIDS(odb,instance_name,El_SetName = None):
+    instance = odb.rootAssembly.instances[instance_name]    
+    if El_SetName == None:
         elements = instance.elements
     else:
-        SET = instance.elementSets[SetName]
+        SET = instance.elementSets[El_SetName]
+        print('Set wird auf Assembly-Ebene geholt')
         elements=SET.elements
-    eIDS=map(lambda element:element.label,elements)    
+    eIDS=map(lambda element:element.label,elements)
     return eIDS
 
 #+------------------------+
@@ -141,12 +143,37 @@ def eulerAnglesToRotationMatrix(theta) :
     R_z = np.array([[math.cos(theta[2]),    -math.sin(theta[2]),    0],
                     [math.sin(theta[2]),    math.cos(theta[2]),     0],
                     [0,                     0,                      1]
-                    ])
-                     
-                     
+                    ])               
     R = np.dot(R_z, np.dot( R_y, R_x ))
- 
     return R
+
+
+# Checks if a matrix is a valid rotation matrix.
+def isRotationMatrix(R) :
+    Rt = np.transpose(R)
+    shouldBeIdentity = np.dot(Rt, R)
+    I = np.identity(3, dtype = R.dtype)
+    n = np.linalg.norm(I - shouldBeIdentity)
+    return n < 1e-6
+ 
+ 
+# Calculates rotation matrix to euler angles
+# The result is the same as MATLAB except the order
+# of the euler angles ( x and z are swapped ).
+    
+def rotationMatrixToEulerAngles(R) :
+    assert(isRotationMatrix(R))
+    sy = math.sqrt(R[0,0] * R[0,0] +  R[1,0] * R[1,0])
+    singular = sy < 1e-6
+    if  not singular :
+        x = math.atan2(R[2,1] , R[2,2])
+        y = math.atan2(-R[2,0], sy)
+        z = math.atan2(R[1,0], R[0,0])
+    else :
+        x = math.atan2(-R[1,2], R[1,1])
+        y = math.atan2(-R[2,0], sy)
+        z = 0
+    return np.array([x, y, z])
 
 #+------------------------+
 
@@ -155,11 +182,10 @@ def getRotatioField(T_min,T_max,n):
     'input: Intial Angel: T_0, Maximal Angel T_max, Delta T'
         #print('New Theta Field will genarated an exported')
     T = np.linspace(T_min,T_max,n)
-        # For numpy Version '1.13.3'
-    #theta = np.array(np.meshgrid(T, T, T)).T.reshape(-1,3) # Matrix, which contains all combines of theta from 0,2*Pi
-    theta = list(it.combinations_with_replacement(T,3))
+    theta = list(it.combinations_with_replacement(T,10))
+    #theta = [[0,0,0]]#,[0,0,0],[0,0.7853981634,0],[0,0,0.7853981634]]
     R = map(eulerAnglesToRotationMatrix,theta)
-    return R
+    return R,theta
 
 #+------------------------+
 
@@ -168,14 +194,28 @@ def rotT_pv(T, g):     # @pv.'s soln
     return np.einsum('ac,bd,ab->cd', g, g, T)
     
 #+------------------------+
- 
-def getValueHistory(odb,flag,eID):
+#odb,stepName,'S',temp,t,_begin,t_end,frame_flag
+def getValueHistory(odb,stepName,flag,eID,t_begin,t_end,frame_flag='all'):
     'INPUt: odb,flag,eID'
     'Returns the time course of LE or S (flag) of the Elemente with the eID'
-    histoValue = []
-    frames = getFrames('Step-1',odb)
-    histoValue = map(lambda temp : VectorToTensor(temp,flag),map(lambda temp:getValueONelement(temp,flag,eID),frames))
-    #histoValue=map(lambda temp : VectorToTensor(temp,flag),histoVec)
+    frames = getFrames(stepName,odb)
+#    try:
+    if frame_flag == 'all':
+        histoValue = map(lambda temp : VectorToTensor(temp,flag),map(lambda temp:getValueONelement(temp,flag,eID),frames))
+    else:
+        histoValue = []
+        frame_begin=getNearstFrame(t_begin,frames)
+        frame_end=getNearstFrame(t_end,frames)
+        print(frame_begin)
+        print(frame_end)
+        if frame_flag == 'interval':
+            frame_interval = range(frame_begin,frame_end+1)
+        else:
+            frame_interval = [frame_begin,frame_end]
+        for frame_id in frame_interval: 
+            histoValue.append(VectorToTensor(getValueONelement(frames[frame_id],flag,eID),flag))           
+#    except:
+#        print('Fehler in getValueHistory')
     return histoValue     
 
 #+------------------------+
@@ -194,27 +234,6 @@ def getMinEigVal(TENSOR):
     minValue=EigVal.min()
     return minValue    
 
-#+------------------------+
-    
-#def calculateSWT(E,S_max,E_min,E_max):
-#    'Calculate the Smith-Wattson-Tropper-Parameter'
-#    'Input:E,S_max,E_min,E_max'
-#    temp = (E_max-E_min)/2*S_max*E
-#    if temp > 0:
-#        SWF=np.sqrt(temp)
-#    else:
-#        SWF = 0
-#    return SWF
-
-#+------------------------+
-
-#def calculateFS(E,k,S_yield,S_max,E_min,E_max):
-#    'Calculate the Fatemi-Socie-Paratmeter'
-#    'Input E,k,S_max,S_yield,E_min,E_max'
-#    FS = 0.5*(E_max - E_min)*(1 + k*S_max/S_yield) 
-#    return FS
-
-#+-------------------------+
     
 def getTimeMin(histoValue,flag):
     Min = np.min(map(getMinEigVal,map(lambda temp : VectorToTensor(temp,flag),histoValue)))
@@ -235,23 +254,17 @@ def getTimeMinMax(histoValue,flag):
 
 #+------------------------+
     
-def getDataForAreaOfIntrest(odb,instance_name,El_SetName=None):
+def getDataForAreaOfIntrest(odb,instance_name,stepName,t_begin,t_end,frame_flag='all',El_SetName=None):
     'generats the fieldOutput for the  with the pretended Function'
-    'Input:frames,elements,func'
+    'Input:odb,instance_name,stepName,El_SetName=None'
     'Return:eIDS,histS,histoLE'
-    frames = getFrames('Step-1',odb)
-    instance = odb.rootAssembly.instances[instance_name]
-    eIDs=getEIDS(instance,El_SetName)
-#    histoS = []
-#    histoLE = []
-#    for i in range(len(eIDs)):
-#        histoS.append(getValueHistory(odb,'S',i))
-#        histoLE.append(getValueHistory(odb,'LE',i))
-    histoS = map(lambda temp: getValueHistory(odb,'S',temp),eIDs)
+    frames = getFrames(stepName,odb)
+    eIDs=getEIDS(odb,instance_name,El_SetName) 
+    histoS = map(lambda temp: getValueHistory(odb,stepName,'S',temp,t_begin,t_end,frame_flag),eIDs)
     try:
-        histoLE = map(lambda temp: getValueHistory(odb,'LE',temp),eIDs)
+        histoLE = map(lambda temp: getValueHistory(odb,stepName,'LE',temp,t_begin,t_end,frame_flag),eIDs)
     except:
-        histoLE = map(lambda temp: getValueHistory(odb,'E',temp),eIDs)
+        histoLE = map(lambda temp: getValueHistory(odb,stepName,'E',temp,t_begin,t_end,frame_flag),eIDs)
     return eIDs,histoS,histoLE
 
 #+------------------------+
@@ -260,9 +273,6 @@ def calcuParameter(histoLE,histoS,Para):
     'Calculate the Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter'
     'Returns the field for Countor plotting' 
     'Input Dir with the Parameter for Fatemi-Socie-Paratmeter and Smith-Wattson-Tropper-Parameter (E,K,S_yield)'
-    #minLE = map(lambda temp: getTimeMin(temp,'LE'),histoLE)
-    #maxLE = map(lambda temp: getTimeMax(temp,'LE'),histoLE)
-    #maxS = map(lambda temp: getTimeMax(temp,'S'),histoS)
     maxS,pos = getMAXbyRotation(histoS)
     SWT =[]
     FS = []
@@ -295,10 +305,7 @@ def getMAXbyRotation(histo):
     'Returns the MaxValue, the Postition, the Rotationmatrix'
     'and the frame of an time-depended Value for an element by rotating the Tensor'
     'Input: timedependen Valau (histo)'
-    R_field = getRotatioField(-math.pi,math.pi,20)
-    #MaxValaues = np.zeros([len(histo),1])
-    #pos = np.zeros([len(histo),1])
-    #R = np.zeros([len(histo),1])
+    R_field,theta = getRotatioField(-math.pi,math.pi,20)
     MaxValues = []
     pos = []
     R = []
@@ -317,9 +324,6 @@ def getMAXbyRotation(histo):
             pos.append(pos_roted[R_id])
             R.append(R_field[R_id])#
     frame_id = np.argmax(MaxValues)
-    #print(MaxValues)
-    #print(pos)
-    #print(R)
     return MaxValues[frame_id],pos[frame_id],R[frame_id],frame_id
 
 #+------------------------+
@@ -401,6 +405,27 @@ def getStrainForFS(histo,R,pos):
     return histo_min, histo_max
 
 #+------------------------+
+
+def derivative(f):
+    'https://www.daniweb.com/programming/software-development/code/444930/newton-s-method-example-python'
+    def compute(x, dx):
+        return (f(x+dx) - f(x))/dx
+    return compute
+
+#+------------------------+
+def newtons_method(f, x, dx=0.000001, tolerance=0.000001):
+    '''f is the function f(x)'''
+    'https://www.daniweb.com/programming/software-development/code/444930/newton-s-method-example-python'
+    df = derivative(f)
+    while True:
+        x1 = x - f(x)/df(x, dx)
+        t = abs(x1 - x)
+        if t < tolerance:
+            break
+        x = x1
+    return x
+
+#+------------------------+
     
 def creatPlane(pos,R):
     'creat Plane'
@@ -432,7 +457,7 @@ def calculateSWT(histoS,histoLE,E):
     
 def calculateFS(E,k,S_yield,S_max,E_amp):
     'Calculate the Fatemi-Socie-Paratmeter'
-    FS = 0.5*(E_amp)*(1 + k*S_max/S_yield) 
+    FS = (E_amp)*(1 + k*S_max/S_yield)
     return FS
 
 #-------------------------+
@@ -441,22 +466,26 @@ def getAmplitude(histo):
     'return the Amplitude of an timedepented-Variable'
     Max = np.max(histo)
     Min = np.min(histo)
+    print('Min: %f \n Max: %f' % (Min,Max))
     return Max-Min
 
 #-------------------------+
     
 def getMaxFSbyRotation(histoS,histoLE,E,S_yield,k):
-    R_field = getRotatioField(-math.pi,math.pi,10)
+    R_field,theta = getRotatioField(0,math.pi,10)
     MaxValues = []
     pos = []
     for R in R_field:
         S_roted  = map(lambda temp: rotT_pv(temp, R),histoS)
-        LE_roted  = map(lambda temp: rotT_pv(temp, R),histoLE) 
+        LE_roted  = map(lambda temp: rotT_pv(temp, R),histoLE)
         n_1_max =np.max(map(lambda Tensor:Tensor[0,0],S_roted))  # Normalspannungen
         n_2_max=np.max(map(lambda Tensor:Tensor[1,1],S_roted)) # Normalspannungen
         n_3_max=np.max(map(lambda Tensor:Tensor[2,2],S_roted)) # Normalspannungen
+        print('1-2')
         E_S_12 = getAmplitude(map(lambda temp:temp[0,1],LE_roted))    # Scherung 1,2
+        print('1-3')
         E_S_13= getAmplitude(map(lambda temp:temp[0,2],LE_roted))    # Scherung 1,3
+        print('2_3')
         E_S_23 = getAmplitude(map(lambda temp:temp[1,2],LE_roted))    # Scherung 2,3
         FS_temp = np.array([[calculateFS(E,k,S_yield,n_1_max,E_S_13),calculateFS(E,k,S_yield,n_1_max,E_S_12)],[calculateFS(E,k,S_yield,n_2_max,E_S_12),calculateFS(E,k,S_yield,n_2_max,E_S_23)],[calculateFS(E,k,S_yield,n_3_max,E_S_13),calculateFS(E,k,S_yield,n_3_max,E_S_23)]])
         FS_arg = np.unravel_index(np.argmax(FS_temp, axis=None), FS_temp.shape) 
@@ -469,45 +498,97 @@ def getMaxFSbyRotation(histoS,histoLE,E,S_yield,k):
             pos.append([2,2])
         else:
             print('Fehler in getMaxFSbyRotation')
-        arg = np.argmax(MaxValues)
-        FS = MaxValues[arg]
-        FS_vec = creatPlane(pos[arg],R_field[arg])
+    arg = np.argmax(MaxValues)
+    FS = MaxValues[arg]
+    print('FS max: %f' % FS)
+    FS_vec = creatPlane(pos[arg],R_field[arg])
+    print(rotationMatrixToEulerAngles(R_field[arg]))
     return FS,FS_vec
 
 #+------------------------+
     
-def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=0,setName = None):
+def reduceEIDs(eIDS,variable_List,portion):
+    print('reduceEIDs:')
+    print(eIDS)
+    print(variable_List)
+    if len(variable_List)==1:
+        eIDS_short = eIDS
+        short_variable= variable_List
+    else:
+        arg = np.argsort(np.array(variable_List))
+        print(arg)
+        eIDS_sort = np.array(eIDS)[arg]
+        variable_sort = np.array(variable_List)[arg]
+        print('eiDs:----------------------')
+        print(eIDS_sort)
+        print('SWT: -----------------------')
+        print(variable_sort)
+        if portion == 0: 
+            print('Worst case Element ')
+            eIDS_short = eIDS_sort[-1]
+            short_variable = variable_sort[-1]
+        else:
+            eIDS_short = eIDS_sort[int(len(variable_List)*(1-portion)):]
+            short_variable = variable_sort[int(len(variable_List)*(1-portion)):]
+    return eIDS_short[0],short_variable[0]
+
+#*------------------------+
+def calcFatLifeSWT(SWT_list,eIDS,b,c,sigma_F,epsilion_F,E,portion = 0.05):
+    eIDS_short,SWT_short = reduceEIDs(eIDS,SWT_list,portion)
+    N=[]
+    for SWT in SWT_short:
+        N.append(newtons_method(lambda N_temp: SWT_eq(N_temp,SWT,sigma_F,epsilion_F,E,b,c), 1))
+    return eIDS_short,N
+
+#+------------------------+
+    
+def SWT_eq(N,SWT,sigma_F,epsilion_F,E,b,c):  
+    return np.power(np.power(sigma_F,2)*np.power(2*N,2*b)+sigma_F*epsilion_F*E*np.power(2*N,(b+c)),0.5)-SWT
+
+#+------------------------+
+    
+def FS_eq(N,SWT,tau_F,gemma_F,G,b,c):
+    return tau_F
+
+#+------------------------+
+    
+def getNearstFrame(t,frames):
+    'Returns the Index of the nearst Fra,e'
+    return np.argmin(map(lambda frame: np.abs(frame.frameValue - t),frames))
+
+#+------------------------+
+#+------------------------+
+#+------------------------+   
+
+def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,StepName,t_begin,t_end,b,c,sigma_F,epsilion_F,portion,interactiveFlag=0,setName = None,frame_flag='all'):
     'This Function creats new Counter-Plots in ODB of Smith-Watson-Tropper and Fatemi-Socie -Paramater'
-#    print('In Funktion:')
-#    print('odb_name,E,k,S_yield,part_Name,interactiveFlag,setName')
-#    print(odb_name,E,k,S_yield,part_Name,interactiveFlag,setName)
+    sys.stdout = open(odb_name+'.txt', 'w')
     odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
-    frames = getFrames('Step-1',odb)
-    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'].name,setName)
+    frames = getFrames(StepName,odb) 
+    eIDS,histoS,histoLE = getDataForAreaOfIntrest(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'].name,StepName,t_begin,t_end,frame_flag,setName)
     FS = []
     FS_vec = []
     SWT = []
     SWT_vec = []
-    message = 'Berechnete Parameter'
-    OB = 'Element'
-    total = len(eIDS)
     print('Berechnung der Parameter')
     for jj in range(len(eIDS)):
-        print('%d von %d Elementen' % (jj,len(eIDS)))
-        # Berchnung von SWT
-        SWT_temp=calculateSWT(histoS[jj],histoLE[jj],E)
-        SWT.append((SWT_temp[0],))
-        SWT_vec.append(SWT_temp[1])
+         print('Elementlabel %d von %d' % (eIDS[jj],len(eIDS)-1 ))
+        #Berchnung von SWT
+         SWT_temp=calculateSWT(histoS[jj],histoLE[jj],E)
+         SWT.append((SWT_temp[0],))
+         SWT_vec.append(SWT_temp[1])
         #Berechnun von FS
-        FS_temp = getMaxFSbyRotation(histoS[jj],histoLE[jj],E,S_yield,k)
-        FS.append((FS_temp[0],))
-        FS_vec.append(FS_temp[1])
-        print(SWT_temp[0])
-        print(SWT_temp[1])
-        print(FS_temp[0])
-        print(FS_temp[1])
-    print('Counter Plotting')
-    #----------------------------------------------------------------------------------------------------------------------------
+         FS_temp = getMaxFSbyRotation(histoS[jj],histoLE[jj],E,S_yield,k)
+         FS.append((FS_temp[0],))
+         FS_vec.append(FS_temp[1])
+
+	# eIDs_SWT,N_SWT = ca lcFatLifeSWT(SWT,eIDS,b,c,sigma_F,epsilion_F,E,portion)  
+    # #try: 
+	# ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'N_SWT',tuple(eIDs_SWT),tuple(N_SWT))
+    # odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+    # #except:
+     # #   print('Lebensdauer bereits berechnet ')
+#    #----------------------------------------------------------------------------------------------------------------------------
     try:
         ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
         odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
@@ -532,7 +613,7 @@ def makeCounterPlotof_FS_SWT(odb_name,E,k,S_yield,part_Name,interactiveFlag=0,se
         odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
     except:
         print('FS-Vec exestiert')     
-    #----------------------------------------------------------------------------------------------------------------------------
+#    #----------------------------------------------------------------------------------------------------------------------------
      
 
     
@@ -545,3 +626,12 @@ def exportVariable(Var,fileName='EXPORT.txt'):
     for var in Var:
         obj.write('%6.5f\n' % var)
 #+------------------------+
+        
+#    ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT',tuple(eIDS),tuple(SWT))
+#    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+#    VectorNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'SWT_Vec',tuple(eIDS),tuple(SWT_vec))
+#    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+#    ScalarNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'FS',tuple(eIDS),tuple(FS))
+#    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
+#    VectorNewFieldOutput(odb,odb.rootAssembly.instances[part_Name.upper()+'-1'],frames[-1],'FS_Vec',tuple(eIDS),tuple(FS_vec))
+#    odb=OPENodb(odb_name,odb_name+'.odb',interactiveFlag)
